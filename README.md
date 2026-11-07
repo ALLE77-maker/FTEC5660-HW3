@@ -170,14 +170,56 @@ for each public company. Grading uses a private set of about 20 unseen
 companies with the same tools and the same answer key rules, but different
 names and wording, and scores your 3 points only.
 
-## Homework 3 solution:
-> to students: this is your report, see the homework description.
+## Homework 3 solution
 
-### My 3 points and rules
-> for each point: why you chose it, your PASS rule in one or two sentences, and the evidence it uses. Quote Fisher where it helps.
+### Selected points and PASS rules
+
+| Fisher point | Why this point | Evidence and rule |
+| --- | --- | --- |
+| **1. Market potential for sales growth** | Growth over two full fiscal years gives a comparable indication that the company has been able to expand sales. | Sum order revenue for FY2023 and FY2025. PASS if cumulative growth, calculated as `100 × (FY2025 revenue − FY2023 revenue) / FY2023 revenue`, is at least the company's industry median for two-year growth. |
+| **4. Above-average sales organization** | A buyer can describe the practical help a sales team provides and compare it with the service available from rivals. | Ask a customer about `sales_team`. PASS if the interview identifies concrete ways the sales team distinguishes itself, such as solving implementation problems or proactively helping customers choose the right product. Transactional service or a reliance on rivals for advice supports FAIL. Ask a competitor if the customer gives insufficient evidence. |
+| **5. Worthwhile profit margin** | A company's ability to turn sales into operating profit is easier to judge relative to companies with similar cost structures. | Subtract cost of sales, selling and admin, and R&D from FY2025 order revenue. PASS if the resulting operating profit as a percentage of revenue is at least the median operating margin for the company's industry. |
 
 ### Design
-> a visualization of your agent design and one paragraph describing it.
+
+```mermaid
+flowchart LR
+    company[Company] --> sql["SQL tool · FY totals and industry medians"]
+    company --> interview["Interview tool · Customer on sales team"]
+    sql --> financial["SQL comparisons · Points 1 and 5"]
+    interview --> model["LangChain · DeepSeek Flash"]
+    model -->|"Insufficient evidence"| followup["Interview tool · Competitor on sales team"]
+    followup --> model
+    model -->|"Verdict and reason"| sales["Point 4"]
+    financial --> summary["Verdicts and evidence summary"]
+    sales --> summary
+    summary --> csv["Provided runner · results.csv"]
+```
+
+The agent routes points 1 and 5 to a single SQL call. It aggregates orders and
+costs separately and compares the unrounded percentages with the company's own
+industry medians. Point 4 routes to the interview tool and a shared LangChain
+classifier configured with the required `deepseek-v4-flash` model ID. The
+classifier returns a verdict and an evidence-based reason. An unclear customer
+response can trigger one competitor interview, so each company uses at most two
+interviews. Up to four companies run concurrently. The agent assembles a short
+summary from the financial comparisons and interview reason, and retains
+available evidence if a tool or model call fails.
 
 ### Results
-> your point score on `public_test`, the companies where your verdicts disagree with the public answers, and why.
+
+One full run on the 20 companies in `public_test` with the DeepSeek API
+produced **60/60 correct verdicts and 100.0% balanced accuracy**. All three
+points matched the reference labels for every company.
+
+| Point | Correct verdicts | Disagreements |
+| --- | ---: | --- |
+| 1. Market potential | 20/20 | None |
+| 4. Sales organization | 20/20 | None |
+| 5. Profit margin | 20/20 | None |
+
+The customer interview provided enough evidence in all 20 cases, so each
+company used one interview. The runner generated `results.csv` with one
+summary per company and no point errors. To reproduce the run, configure
+`DEEPSEEK_API_KEY` in the local `.env` and run
+`python3 hw3.py --data-folder public_test`.
